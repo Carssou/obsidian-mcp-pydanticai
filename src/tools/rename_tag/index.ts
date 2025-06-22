@@ -6,46 +6,64 @@ import {
   validateTag,
   normalizeTag,
   parseNote,
-  stringifyNote
+  stringifyNote,
 } from "../../utils/tags.js";
 import {
   getAllMarkdownFiles,
   safeReadFile,
-  fileExists
+  fileExists,
 } from "../../utils/files.js";
 import { createTool } from "../../utils/tool-factory.js";
 
 // Input validation schema with descriptions
-const schema = z.object({
-  vault: z.string()
-    .min(1, "Vault name cannot be empty")
-    .describe("Name of the vault containing the tags"),
-  oldTag: z.string()
-    .min(1, "Old tag must not be empty")
-    .refine(
-      tag => /^[a-zA-Z0-9\/]+$/.test(tag),
-      "Tags must contain only letters, numbers, and forward slashes. Do not include the # symbol. Examples: 'project', 'work/active', 'tasks/2024/q1'"
-    )
-    .describe("The tag to rename (without #). Example: 'project' or 'work/active'"),
-  newTag: z.string()
-    .min(1, "New tag must not be empty")
-    .refine(
-      tag => /^[a-zA-Z0-9\/]+$/.test(tag),
-      "Tags must contain only letters, numbers, and forward slashes. Do not include the # symbol. Examples: 'project', 'work/active', 'tasks/2024/q1'"
-    )
-    .describe("The new tag name (without #). Example: 'projects' or 'work/current'"),
-  createBackup: z.boolean()
-    .default(true)
-    .describe("Whether to create a backup before making changes (default: true)"),
-  normalize: z.boolean()
-    .default(true)
-    .describe("Whether to normalize tag names (e.g., ProjectActive -> project-active) (default: true)"),
-  batchSize: z.number()
-    .min(1)
-    .max(100)
-    .default(50)
-    .describe("Number of files to process in each batch (1-100) (default: 50)")
-}).strict();
+const schema = z
+  .object({
+    vault: z
+      .string()
+      .min(1, "Vault name cannot be empty")
+      .describe("Name of the vault containing the tags"),
+    oldTag: z
+      .string()
+      .min(1, "Old tag must not be empty")
+      .refine(
+        (tag) => /^[a-zA-Z0-9\/]+$/.test(tag),
+        "Tags must contain only letters, numbers, and forward slashes. Do not include the # symbol. Examples: 'project', 'work/active', 'tasks/2024/q1'"
+      )
+      .describe(
+        "The tag to rename (without #). Example: 'project' or 'work/active'"
+      ),
+    newTag: z
+      .string()
+      .min(1, "New tag must not be empty")
+      .refine(
+        (tag) => /^[a-zA-Z0-9\/]+$/.test(tag),
+        "Tags must contain only letters, numbers, and forward slashes. Do not include the # symbol. Examples: 'project', 'work/active', 'tasks/2024/q1'"
+      )
+      .describe(
+        "The new tag name (without #). Example: 'projects' or 'work/current'"
+      ),
+    createBackup: z
+      .boolean()
+      .default(true)
+      .describe(
+        "Whether to create a backup before making changes (default: true)"
+      ),
+    normalize: z
+      .boolean()
+      .default(true)
+      .describe(
+        "Whether to normalize tag names (e.g., ProjectActive -> project-active) (default: true)"
+      ),
+    batchSize: z
+      .number()
+      .min(1)
+      .max(100)
+      .default(50)
+      .describe(
+        "Number of files to process in each batch (1-100) (default: 50)"
+      ),
+  })
+  .strict();
 
 // Types
 type RenameTagInput = z.infer<typeof schema>;
@@ -59,7 +77,7 @@ interface TagChangeReport {
   filePath: string;
   oldTags: string[];
   newTags: string[];
-  location: 'frontmatter' | 'content';
+  location: "frontmatter" | "content";
   line?: number;
 }
 
@@ -77,12 +95,12 @@ interface RenameTagReport {
  * Creates a backup of the vault
  */
 async function createVaultBackup(vaultPath: string): Promise<string> {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupDir = path.join(vaultPath, '.backup');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupDir = path.join(vaultPath, ".backup");
   const backupPath = path.join(backupDir, `vault-backup-${timestamp}`);
 
   await fs.mkdir(backupDir, { recursive: true });
-  
+
   // Copy all markdown files to backup
   const files = await getAllMarkdownFiles(vaultPath);
   for (const file of files) {
@@ -108,19 +126,21 @@ function updateFrontmatterTags(
 } {
   const changes: { oldTag: string; newTag: string }[] = [];
   const updatedFrontmatter = { ...frontmatter };
-  
+
   if (!Array.isArray(frontmatter.tags)) {
     return { frontmatter: updatedFrontmatter, changes };
   }
 
-  const updatedTags = frontmatter.tags.map(tag => {
+  const updatedTags = frontmatter.tags.map((tag) => {
     const normalizedTag = normalizeTag(tag, normalize);
-    
+
     for (const { oldTag, newTag } of replacements) {
       const normalizedOldTag = normalizeTag(oldTag, normalize);
-      
-      if (normalizedTag === normalizedOldTag || 
-          normalizedTag.startsWith(normalizedOldTag + '/')) {
+
+      if (
+        normalizedTag === normalizedOldTag ||
+        normalizedTag.startsWith(normalizedOldTag + "/")
+      ) {
         const updatedTag = normalizedTag.replace(
           new RegExp(`^${normalizedOldTag}`),
           normalizeTag(newTag, normalize)
@@ -129,7 +149,7 @@ function updateFrontmatterTags(
         return updatedTag;
       }
     }
-    
+
     return normalizedTag;
   });
 
@@ -149,53 +169,52 @@ function updateInlineTags(
   changes: { oldTag: string; newTag: string; line: number }[];
 } {
   const changes: { oldTag: string; newTag: string; line: number }[] = [];
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   let inCodeBlock = false;
   let inHtmlComment = false;
 
   const updatedLines = lines.map((line, lineNum) => {
     // Handle code blocks and comments
-    if (line.trim().startsWith('```')) {
+    if (line.trim().startsWith("```")) {
       inCodeBlock = !inCodeBlock;
       return line;
     }
-    if (line.includes('<!--')) inHtmlComment = true;
-    if (line.includes('-->')) inHtmlComment = false;
+    if (line.includes("<!--")) inHtmlComment = true;
+    if (line.includes("-->")) inHtmlComment = false;
     if (inCodeBlock || inHtmlComment) return line;
 
     // Update tags in regular content
-    return line.replace(
-      /(?<!`)#[a-zA-Z0-9][a-zA-Z0-9/]*(?!`)/g,
-      (match) => {
-        const tag = match.slice(1);
-        const normalizedTag = normalizeTag(tag, normalize);
+    return line.replace(/(?<!`)#[a-zA-Z0-9][a-zA-Z0-9/]*(?!`)/g, (match) => {
+      const tag = match.slice(1);
+      const normalizedTag = normalizeTag(tag, normalize);
 
-        for (const { oldTag, newTag } of replacements) {
-          const normalizedOldTag = normalizeTag(oldTag, normalize);
-          
-          if (normalizedTag === normalizedOldTag ||
-              normalizedTag.startsWith(normalizedOldTag + '/')) {
-            const updatedTag = normalizedTag.replace(
-              new RegExp(`^${normalizedOldTag}`),
-              normalizeTag(newTag, normalize)
-            );
-            changes.push({
-              oldTag: normalizedTag,
-              newTag: updatedTag,
-              line: lineNum + 1
-            });
-            return `#${updatedTag}`;
-          }
+      for (const { oldTag, newTag } of replacements) {
+        const normalizedOldTag = normalizeTag(oldTag, normalize);
+
+        if (
+          normalizedTag === normalizedOldTag ||
+          normalizedTag.startsWith(normalizedOldTag + "/")
+        ) {
+          const updatedTag = normalizedTag.replace(
+            new RegExp(`^${normalizedOldTag}`),
+            normalizeTag(newTag, normalize)
+          );
+          changes.push({
+            oldTag: normalizedTag,
+            newTag: updatedTag,
+            line: lineNum + 1,
+          });
+          return `#${updatedTag}`;
         }
-
-        return match;
       }
-    );
+
+      return match;
+    });
   });
 
   return {
-    content: updatedLines.join('\n'),
-    changes
+    content: updatedLines.join("\n"),
+    changes,
   };
 }
 
@@ -207,37 +226,37 @@ async function updateSavedSearches(
   replacements: TagReplacement[],
   normalize: boolean
 ): Promise<void> {
-  const searchConfigPath = path.join(vaultPath, '.obsidian', 'search.json');
-  
-  if (!await fileExists(searchConfigPath)) return;
+  const searchConfigPath = path.join(vaultPath, ".obsidian", "search.json");
+
+  if (!(await fileExists(searchConfigPath))) return;
 
   try {
     const searchConfig = JSON.parse(
-      await fs.readFile(searchConfigPath, 'utf-8')
+      await fs.readFile(searchConfigPath, "utf-8")
     );
 
     let modified = false;
-    
+
     // Update saved searches
     if (Array.isArray(searchConfig.savedSearches)) {
       searchConfig.savedSearches = searchConfig.savedSearches.map(
         (search: any) => {
-          if (typeof search.query !== 'string') return search;
+          if (typeof search.query !== "string") return search;
 
           let updatedQuery = search.query;
           for (const { oldTag, newTag } of replacements) {
             const normalizedOldTag = normalizeTag(oldTag, normalize);
             const normalizedNewTag = normalizeTag(newTag, normalize);
-            
+
             // Update tag queries
             updatedQuery = updatedQuery.replace(
-              new RegExp(`tag:${normalizedOldTag}(/\\S*)?`, 'g'),
+              new RegExp(`tag:${normalizedOldTag}(/\\S*)?`, "g"),
               `tag:${normalizedNewTag}$1`
             );
-            
+
             // Update raw tag references
             updatedQuery = updatedQuery.replace(
-              new RegExp(`#${normalizedOldTag}(/\\S*)?`, 'g'),
+              new RegExp(`#${normalizedOldTag}(/\\S*)?`, "g"),
               `#${normalizedNewTag}$1`
             );
           }
@@ -258,7 +277,7 @@ async function updateSavedSearches(
       );
     }
   } catch (error) {
-    console.error('Error updating saved searches:', error);
+    console.error("Error updating saved searches:", error);
     // Continue with other operations
   }
 }
@@ -287,17 +306,17 @@ async function processBatch(
         if (!content) {
           failed.push({
             filePath,
-            error: 'File not found or cannot be read'
+            error: "File not found or cannot be read",
           });
           return;
         }
 
         const parsed = parseNote(content);
-        
+
         // Update frontmatter tags
         const { frontmatter: updatedFrontmatter, changes: frontmatterChanges } =
           updateFrontmatterTags(parsed.frontmatter, replacements, normalize);
-        
+
         // Update inline tags
         const { content: updatedContent, changes: contentChanges } =
           updateInlineTags(parsed.content, replacements, normalize);
@@ -307,35 +326,35 @@ async function processBatch(
           const updatedNote = stringifyNote({
             ...parsed,
             frontmatter: updatedFrontmatter,
-            content: updatedContent
+            content: updatedContent,
           });
-          
-          await fs.writeFile(filePath, updatedNote, 'utf-8');
+
+          await fs.writeFile(filePath, updatedNote, "utf-8");
 
           // Record changes
           if (frontmatterChanges.length > 0) {
             successful.push({
               filePath,
-              oldTags: frontmatterChanges.map(c => c.oldTag),
-              newTags: frontmatterChanges.map(c => c.newTag),
-              location: 'frontmatter'
+              oldTags: frontmatterChanges.map((c) => c.oldTag),
+              newTags: frontmatterChanges.map((c) => c.newTag),
+              location: "frontmatter",
             });
           }
 
           if (contentChanges.length > 0) {
             successful.push({
               filePath,
-              oldTags: contentChanges.map(c => c.oldTag),
-              newTags: contentChanges.map(c => c.newTag),
-              location: 'content',
-              line: contentChanges[0].line
+              oldTags: contentChanges.map((c) => c.oldTag),
+              newTags: contentChanges.map((c) => c.newTag),
+              location: "content",
+              line: contentChanges[0].line,
             });
           }
         }
       } catch (error) {
         failed.push({
           filePath,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     })
@@ -349,15 +368,12 @@ async function processBatch(
  */
 async function renameTag(
   vaultPath: string,
-  params: Omit<RenameTagInput, 'vault'>
+  params: Omit<RenameTagInput, "vault">
 ): Promise<RenameTagReport> {
   try {
     // Validate tags (though Zod schema already handles this)
     if (!validateTag(params.oldTag) || !validateTag(params.newTag)) {
-      throw new McpError(
-        ErrorCode.InvalidParams,
-        'Invalid tag format'
-      );
+      throw new McpError(ErrorCode.InvalidParams, "Invalid tag format");
     }
 
     // Create backup if requested
@@ -368,11 +384,11 @@ async function renameTag(
 
     // Get all markdown files
     const files = await getAllMarkdownFiles(vaultPath);
-    
+
     // Process files in batches
     const successful: TagChangeReport[] = [];
     const failed: { filePath: string; error: string }[] = [];
-    
+
     for (let i = 0; i < files.length; i += params.batchSize) {
       const { successful: batchSuccessful, failed: batchFailed } =
         await processBatch(
@@ -382,7 +398,7 @@ async function renameTag(
           [{ oldTag: params.oldTag, newTag: params.newTag }],
           params.normalize
         );
-      
+
       successful.push(...batchSuccessful);
       failed.push(...batchFailed);
     }
@@ -398,7 +414,7 @@ async function renameTag(
       successful,
       failed,
       timestamp: new Date().toISOString(),
-      backupCreated: backupPath
+      backupCreated: backupPath,
     };
   } catch (error) {
     // Ensure errors are properly propagated
@@ -407,79 +423,88 @@ async function renameTag(
     }
     throw new McpError(
       ErrorCode.InternalError,
-      error instanceof Error ? error.message : 'Unknown error during tag renaming'
+      error instanceof Error
+        ? error.message
+        : "Unknown error during tag renaming"
     );
   }
 }
 
 export function createRenameTagTool(vaults: Map<string, string>) {
-  return createTool<RenameTagInput>({
-    name: 'rename-tag',
-    description: `Safely renames tags throughout the vault while preserving hierarchies.
+  return createTool<RenameTagInput>(
+    {
+      name: "rename_tag",
+      description: `Safely renames tags throughout the vault while preserving hierarchies.
 
 Examples:
 - Simple rename: { "oldTag": "project", "newTag": "projects" }
 - Rename with hierarchy: { "oldTag": "work/active", "newTag": "projects/current" }
 - With options: { "oldTag": "status", "newTag": "state", "normalize": true, "createBackup": true }
 - INCORRECT: { "oldTag": "#project" } (don't include # symbol)`,
-    schema,
-    handler: async (args, vaultPath, _vaultName) => {
-      const results = await renameTag(vaultPath, {
-        oldTag: args.oldTag,
-        newTag: args.newTag,
-        createBackup: args.createBackup ?? true,
-        normalize: args.normalize ?? true,
-        batchSize: args.batchSize ?? 50
-      });
-      
-      // Format response message
-      let message = '';
-      
-      // Add backup info if created
-      if (results.backupCreated) {
-        message += `Created backup at: ${results.backupCreated}\n\n`;
-      }
-      
-      // Add success summary
-      if (results.successful.length > 0) {
-        message += `Successfully renamed tags in ${results.successful.length} locations:\n\n`;
-        
-        // Group changes by file
-        const changesByFile = results.successful.reduce((acc, change) => {
-          if (!acc[change.filePath]) {
-            acc[change.filePath] = [];
-          }
-          acc[change.filePath].push(change);
-          return acc;
-        }, {} as Record<string, typeof results.successful>);
-        
-        // Report changes for each file
-        for (const [file, changes] of Object.entries(changesByFile)) {
-          message += `${file}:\n`;
-          changes.forEach(change => {
-            const location = change.line 
-              ? `${change.location} (line ${change.line})`
-              : change.location;
-            message += `  ${location}: ${change.oldTags.join(', ')} -> ${change.newTags.join(', ')}\n`;
-          });
-          message += '\n';
-        }
-      }
-      
-      // Add errors if any
-      if (results.failed.length > 0) {
-        message += 'Errors:\n';
-        results.failed.forEach(error => {
-          message += `  ${error.filePath}: ${error.error}\n`;
+      schema,
+      handler: async (args, vaultPath, _vaultName) => {
+        const results = await renameTag(vaultPath, {
+          oldTag: args.oldTag,
+          newTag: args.newTag,
+          createBackup: args.createBackup ?? true,
+          normalize: args.normalize ?? true,
+          batchSize: args.batchSize ?? 50,
         });
-      }
 
-      return {
-        content: [{
-          type: 'text',
-          text: message.trim()
-        }]
-      };
-    }
-  }, vaults);
+        // Format response message
+        let message = "";
+
+        // Add backup info if created
+        if (results.backupCreated) {
+          message += `Created backup at: ${results.backupCreated}\n\n`;
+        }
+
+        // Add success summary
+        if (results.successful.length > 0) {
+          message += `Successfully renamed tags in ${results.successful.length} locations:\n\n`;
+
+          // Group changes by file
+          const changesByFile = results.successful.reduce((acc, change) => {
+            if (!acc[change.filePath]) {
+              acc[change.filePath] = [];
+            }
+            acc[change.filePath].push(change);
+            return acc;
+          }, {} as Record<string, typeof results.successful>);
+
+          // Report changes for each file
+          for (const [file, changes] of Object.entries(changesByFile)) {
+            message += `${file}:\n`;
+            changes.forEach((change) => {
+              const location = change.line
+                ? `${change.location} (line ${change.line})`
+                : change.location;
+              message += `  ${location}: ${change.oldTags.join(
+                ", "
+              )} -> ${change.newTags.join(", ")}\n`;
+            });
+            message += "\n";
+          }
+        }
+
+        // Add errors if any
+        if (results.failed.length > 0) {
+          message += "Errors:\n";
+          results.failed.forEach((error) => {
+            message += `  ${error.filePath}: ${error.error}\n`;
+          });
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: message.trim(),
+            },
+          ],
+        };
+      },
+    },
+    vaults
+  );
 }

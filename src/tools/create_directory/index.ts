@@ -5,20 +5,27 @@ import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { createTool } from "../../utils/tool-factory.js";
 
 // Input validation schema with descriptions
-const schema = z.object({
-  vault: z.string()
-    .min(1, "Vault name cannot be empty")
-    .describe("Name of the vault where the directory should be created"),
-  path: z.string()
-    .min(1, "Directory path cannot be empty")
-    .refine(dirPath => !path.isAbsolute(dirPath), 
-      "Directory path must be relative to vault root")
-    .describe("Path of the directory to create (relative to vault root)"),
-  recursive: z.boolean()
-    .optional()
-    .default(true)
-    .describe("Create parent directories if they don't exist")
-}).strict();
+const schema = z
+  .object({
+    vault: z
+      .string()
+      .min(1, "Vault name cannot be empty")
+      .describe("Name of the vault where the directory should be created"),
+    path: z
+      .string()
+      .min(1, "Directory path cannot be empty")
+      .refine(
+        (dirPath) => !path.isAbsolute(dirPath),
+        "Directory path must be relative to vault root"
+      )
+      .describe("Path of the directory to create (relative to vault root)"),
+    recursive: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Create parent directories if they don't exist"),
+  })
+  .strict();
 
 type CreateDirectoryInput = z.infer<typeof schema>;
 
@@ -29,7 +36,7 @@ async function createDirectory(
   recursive: boolean
 ): Promise<string> {
   const fullPath = path.join(vaultPath, dirPath);
-  
+
   // Validate path is within vault
   const normalizedPath = path.normalize(fullPath);
   if (!normalizedPath.startsWith(path.normalize(vaultPath))) {
@@ -48,7 +55,7 @@ async function createDirectory(
         `A directory already exists at: ${normalizedPath}`
       );
     } catch (error: any) {
-      if (error.code !== 'ENOENT') {
+      if (error.code !== "ENOENT") {
         throw error;
       }
       // Directory doesn't exist, proceed with creation
@@ -67,20 +74,27 @@ async function createDirectory(
 }
 
 export function createCreateDirectoryTool(vaults: Map<string, string>) {
-  return createTool<CreateDirectoryInput>({
-    name: "create-directory",
-    description: "Create a new directory in the specified vault",
-    schema,
-    handler: async (args, vaultPath, _vaultName) => {
-      const createdPath = await createDirectory(vaultPath, args.path, args.recursive ?? true);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Successfully created directory at: ${createdPath}`
-          }
-        ]
-      };
-    }
-  }, vaults);
+  return createTool<CreateDirectoryInput>(
+    {
+      name: "create_directory",
+      description: "Create a new directory in the specified vault",
+      schema,
+      handler: async (args, vaultPath, _vaultName) => {
+        const createdPath = await createDirectory(
+          vaultPath,
+          args.path,
+          args.recursive ?? true
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully created directory at: ${createdPath}`,
+            },
+          ],
+        };
+      },
+    },
+    vaults
+  );
 }
