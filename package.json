@@ -1,6 +1,6 @@
 {
-  "name": "obsidian-mcp",
-  "version": "1.0.6",
+  "name": "obsidian-mcp-pydanticai",
+  "version": "1.0.0",
   "description": "MCP server for AI assistants to interact with Obsidian vaults",
   "type": "module",
   "main": "build/main.js",
@@ -44,11 +44,11 @@
     "notes",
     "knowledge-management"
   ],
-  "author": "Steven Stavrakis",
+  "author": "Ludovic Carceles",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/StevenStavrakis/obsidian-mcp"
+    "url": "https://github.com/Carssou/obsidian-mcp-pydanticai"
   },
   "engines": {
     "node": ">=16"
